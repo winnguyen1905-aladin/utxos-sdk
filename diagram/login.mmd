@@ -1,0 +1,66 @@
+sequenceDiagram
+    participant User as 👤 User
+    participant Frontend as 🌐 Frontend App
+    participant Google as 🔐 Google OAuth
+    participant Backend as ⚙️ Backend Server
+    participant DB as 🗄️ Database
+    participant WalletService as 👛 Wallet Service
+
+    User->>Frontend: Click "Login with Google"
+    Frontend->>Google: Redirect to OAuth URL
+    Google->>User: Show consent screen
+    User->>Google: Approve access
+    Google->>Frontend: Redirect with authorization code
+    Frontend->>Backend: Send code to /api/auth
+    
+    Backend->>Google: Exchange code for tokens
+    Google->>Backend: Return access_token + refresh_token
+    Backend->>Google: Get user profile with access_token
+    Google->>Backend: Return user info
+    
+    Note over Backend: Check if user exists
+    Backend->>DB: SELECT * FROM users WHERE provider_id=?
+    DB-->>Backend: User found! Return wallet_id
+    
+    Note over Backend: Retrieve existing wallet
+    Backend->>DB: SELECT * FROM wallets WHERE user_id=?
+    DB-->>Backend: Return auth_shard, encrypted_recovery_shard, recovery_question
+    
+    Note over Backend: Generate JWT for session
+    Backend->>Backend: Create JWT with existing user_id
+    Backend->>Frontend: Return JWT + wallet data
+    
+    Note over Frontend: Wallet reconstruction needed
+    Frontend->>User: Show wallet unlock screen
+    Frontend->>User: "Enter password or use biometric"
+    
+    alt User enters password/recovery answer
+        User->>Frontend: Enter recovery answer: "Fluffy"
+        Note over WalletService: Derive decryption key from answer
+        Frontend->>WalletService: deriveKey("Fluffy")
+        WalletService->>WalletService: Generate recovery_shard_encryption_key
+        
+        Note over WalletService: Decrypt recovery shard
+        WalletService->>WalletService: decrypt(encrypted_recovery_shard, key)
+        WalletService->>WalletService: Get recovery_shard (1/3)
+        
+        Note over WalletService: Combine shards to reconstruct seed
+        WalletService->>WalletService: combine(auth_shard + recovery_shard)
+        WalletService->>WalletService: Reconstruct 24-word seed phrase
+        
+    else User uses biometric/WebAuthN
+        User->>Frontend: Use fingerprint/face ID
+        Note over WalletService: WebAuthN authentication
+        Frontend->>WalletService: webauthn.get()
+        WalletService->>WalletService: Get device shard from secure storage
+        WalletService->>WalletService: Combine device_shard + auth_shard
+        WalletService->>WalletService: Reconstruct seed phrase
+    end
+    
+    Note over WalletService: Initialize wallets with seed
+    WalletService->>WalletService: Initialize Cardano wallet
+    WalletService->>WalletService: Initialize Bitcoin wallet  
+    WalletService->>WalletService: Initialize Spark wallet
+    
+    Frontend->>User: Wallet unlocked successfully!
+    Note over Frontend: Ready to sign transactions

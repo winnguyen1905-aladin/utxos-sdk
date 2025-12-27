@@ -1,0 +1,60 @@
+sequenceDiagram
+    participant User as 👤 User
+    participant Frontend as 🌐 Frontend App
+    participant Google as 🔐 Google OAuth
+    participant Backend as ⚙️ Backend Server
+    participant DB as 🗄️ Database
+    participant WalletService as 👛 Wallet Service
+
+    User->>Frontend: Click "Login with Google"
+    Frontend->>Google: Redirect to OAuth URL
+    Google->>User: Show consent screen
+    User->>Google: Approve access
+    Google->>Frontend: Redirect with authorization code
+    Frontend->>Backend: Send code to /api/auth
+    
+    Backend->>Google: Exchange code for tokens
+    Google->>Backend: Return access_token + refresh_token
+    Backend->>Google: Get user profile with access_token
+    Google->>Backend: Return user info (email, name, id)
+    
+    Note over Backend: Check if user exists in DB
+    Backend->>DB: SELECT * FROM users WHERE provider_id=?
+    DB-->>Backend: User not found (first time)
+    
+    Note over Frontend: Show wallet setup screen
+    Backend->>Frontend: Redirect to wallet setup
+    Frontend->>User: "Create your wallet"
+    
+    Note over WalletService: Generate 24-word seed phrase
+    WalletService->>WalletService: generateMnemonic(256)
+    WalletService->>WalletService: "abandon ability able..."
+    
+    Note over Frontend: Display seed phrase to user
+    Frontend->>User: Show 24-word seed phrase
+    User->>Frontend: "I've saved my seed phrase"
+    
+    Note over Frontend: Setup recovery question
+    Frontend->>User: "Create recovery question"
+    User->>Frontend: Question: "What was my first pet?"
+    User->>Frontend: Answer: "Fluffy"
+    
+    Note over WalletService: Create 3 key shards
+    WalletService->>WalletService: Split seed into 3 shards
+    WalletService->>WalletService: Shard 1: Device shard
+    WalletService->>WalletService: Shard 2: Auth shard  
+    WalletService->>WalletService: Shard 3: Recovery shard
+    
+    Note over WalletService: Encrypt shards
+    WalletService->>WalletService: Encrypt device shard (local)
+    WalletService->>WalletService: Encrypt recovery shard (with answer)
+    WalletService->>WalletService: Keep auth shard for server
+    
+    Note over Backend: Store wallet data
+    Backend->>DB: INSERT INTO users (...)
+    Backend->>DB: INSERT INTO wallets (auth_shard, encrypted_recovery_shard, recovery_question, pub_key_hashes)
+    
+    Note over Backend: Generate JWT
+    Backend->>Backend: Create JWT with user info
+    Backend->>Frontend: Return JWT + wallet data
+    Frontend->>User: Wallet created successfully!
